@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# cinecam launcher
+#   ./cinecam [dumps ...] [--path campath.json]     camera path editor
+#   ./cinecam render campath.json [options]         batch movie render
+#   ./cinecam test [pytest options]                 run the tests (tests/)
+# Environment (see README.md, "Installation"):
+#   CINECAM_PYTHON   python interpreter to use (default: python3 on PATH, e.g. the active venv)
+#   SHAMROCK_BUILD   shamrock build directory holding pysham/ (default: ../../build)
+HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+SHAMROCK_BUILD="${SHAMROCK_BUILD:-$HERE/../../build}"
+PY="${CINECAM_PYTHON:-python3}"
+if [ ! -d "$SHAMROCK_BUILD/pysham" ]; then
+    echo "cinecam: no shamrock python module in $SHAMROCK_BUILD/pysham;" \
+         "set SHAMROCK_BUILD to your shamrock build directory" >&2
+    exit 1
+fi
+export PYTHONPATH="$HERE/src:$SHAMROCK_BUILD/pysham${PYTHONPATH:+:$PYTHONPATH}"
+export LD_LIBRARY_PATH="$SHAMROCK_BUILD${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+if [ "$1" = "render" ]; then
+    shift
+    exec "$PY" -m cinecam.render_movie "$@"
+fi
+if [ "$1" = "test" ]; then
+    shift
+    cd "$HERE" && exec "$PY" -m pytest "$@"
+fi
+exec "$PY" -m cinecam.gui.app "$@"

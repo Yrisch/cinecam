@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+markers = [
+    "gui: Qt editor tests (offscreen, need PyQt6)",
+    "shamrock: need the shamrock python module and a real dump (CINECAM_TEST_DUMP)",
+]
