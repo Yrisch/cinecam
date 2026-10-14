@@ -34,7 +34,7 @@ The launcher puts `src/` and `$SHAMROCK_BUILD/pysham` (default `../../build`) on
 | `data/sinktracks.py` | `SinkTracks`: every sink in every dump, Hermite positions, `sinks_at(dump)`, npz cache in `~/.cache/cinecam/` | data, constants |
 | `data/proxycache.py` | `proxy_sample` (fixed-rank gas sample), `ProxyCache` (LRU + prefetch thread) | data, constants |
 | `render/compose.py` | gas colormap, proxy `splat_column`, cores, label, `compose`, `save_png` | path, numpy/scipy/matplotlib/PIL |
-| `render/stars.py` | `StarLight` (photometry, PSF, stretch, spheres, auto exposure), `star_exposure` | path |
+| `render/stars.py` | `StarLight` (photometry, PSF, stretch, dots, auto exposure), `star_exposure` | path |
 | `render/backend.py` | `SimScene` (shamrock load + column renders), `FrameRenderer`, `server_main` (render process) | shamrock, everything above |
 | `gui/*.py` | Qt editor: `app.py` (`Editor`, `main`), `worldview`, `viewfinder`, `timeline`, `inspectors` (panels, dialogs), `workers` (render process client, tracks thread), `keymaps`, `qtutil` | everything |
 | `render_movie.py` | batch renderer | path, data, render |
@@ -89,7 +89,11 @@ lazily), so they stay importable and testable without either.
    particles and does not flicker. Weight = living gas mass / n (in M☉/pc² splat units).
 8. **Resolution independence of stars**: PSF sizes are defined on a 1920 px frame and
    scaled by `nx / REF_WIDTH`, so drafts (`--scale`) look like the final movie.
-9. **Auto exposure is a function of path time only** (`stars.star_exposure`, ±0.5 s
+9. **Stars without PSF look like the proxy**: `StarLight.dots` gives brightness, colour,
+   radius and opacity to both the render (`_dots`, RGBA drawn over the gas by `compose`)
+   and the viewfinder proxy (`_proxy_stars`), sizes relative to `DOT_REF_WIDTH`. Change
+   the dot look there only.
+10. **Auto exposure is a function of path time only** (`stars.star_exposure`, ±0.5 s
    window, clamped ±3 dex), so frames can be rendered in any order or in parallel.
 
 ## Extending

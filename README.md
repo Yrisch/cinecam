@@ -58,7 +58,7 @@ to the Qt settings of the user.
 | right, **viewfinder** | what the camera sees. Instant particle proxy while you move, then the real shamrock render (gas + stars + cores, same compositor as the movie) ~0.2 s after you stop. |
 | **timeline** | keyframes (drag to retime, right-click to delete), simulation dump track, playhead (click / drag to scrub). |
 | **camera inspector** | exact numbers for the camera at the playhead + per-key look (Σ range, star exposure, extinction). |
-| **movie & look** | duration, fps, output resolution, preview resolution, colormap, layers, star PSF on/off (spheres), spikes, auto exposure. |
+| **movie & look** | duration, fps, output resolution, preview resolution, colormap, layers, star PSF on/off (off: the proxy dots), spikes, auto exposure. |
 
 Workflow: scrub to a time, fly the camera in the viewfinder, press **K**.
 When the playhead is on a keyframe, all edits change that keyframe.
@@ -174,7 +174,9 @@ camera stays level; only a roll (Q/E) changes it.
     sizes scale with the frame width, so a draft and the final movie look the same;
   * colour preserving asinh stretch of the intensity (Lupton et al. 2004), highlights fade
     to white; `exposure` (dex, per key) shifts it;
-  * `star_psf` off: stars as small shaded spheres of their colour instead;
+  * `star_psf` off: stars as round dots, exactly as in the instant proxy view (same brightness,
+    colour, size and opacity, drawn over the gas; sizes relative to the frame width, so the
+    proxy, the preview and the movie match);
   * `auto_exposure`: the exposure follows the brightest stars in view (10th brightest just
     below white), averaged over ±0.5 s of the path and clamped to ±3 dex; the key
     exposure is added to it.

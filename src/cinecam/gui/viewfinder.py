@@ -133,25 +133,24 @@ class Viewfinder(QtWidgets.QWidget):
         ok = (z > ZNEAR) & (sx >= 0) & (sx < rect.width()) & (sy >= 0) & (sy < rect.height())
         if not ok.any():
             return
-        # same photometry and stretch as the renders, drawn as dots: a few brightness levels and
-        # temperature bins, each in one call
+        # the dots of the renders without PSF (StarLight.dots), sizes relative to the frame
+        # width; a few brightness levels and temperature bins, each drawn in one call
         sl = ed.starlight
         lum, T = sl.luminosities(sinks["star_mass"][ok])
         F = sl.fluxes(ed.live, pos[ok], lum, None, ed.pc_per_unit())
-        nx = rect.width()
-        I = F.mean(axis=1) * sl._moffat(0.0, sl.CORE_FWHM, sl.CORE_BETA) * 10.0 ** ed.live_exposure(nx, rect.height())
-        b = np.clip(np.arcsinh(I / sl.I_SOFT) / np.arcsinh(sl.I_WHITE / sl.I_SOFT), 0.0, 1.0)
+        b, _, _, _ = sl.dots(F, ed.live_exposure(rect.width(), rect.height()))
+        scale = rect.width() / sl.DOT_REF_WIDTH
         level = np.minimum((b * 6).astype(int), 5)
         tbin = np.clip(np.digitize(np.log10(T), np.linspace(3.4, 4.5, 7)), 0, 7)
-        cols = sl.colours(10 ** np.linspace(3.3, 4.6, 8))
+        cols = np.clip(sl.colours(10 ** np.linspace(3.3, 4.6, 8)), 0, 1) ** (1 / 2.2)
         X, Y = rect.left() + sx[ok], rect.top() + sy[ok]
         for lv in range(6):
             for tb in range(8):
                 m = (level == lv) & (tbin == tb) & (b > 0.5 / 255)
                 if m.any():
                     v = (lv + 0.5) / 6
-                    c = cols[tb]
-                    draw_dots(p, X[m], Y[m], 0.7 + 2.5 * v, QColor.fromRgbF(*np.clip(c ** (1 / 2.2), 0, 1), 0.35 + 0.65 * v))
+                    r = (sl.DOT_R0 + sl.DOT_R1 * v) * scale
+                    draw_dots(p, X[m], Y[m], r, QColor.fromRgbF(*cols[tb], sl.DOT_A0 + sl.DOT_A1 * v))
 
     # -- events
 

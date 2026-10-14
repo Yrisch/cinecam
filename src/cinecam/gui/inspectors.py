@@ -241,7 +241,7 @@ class MovieInspector(QtWidgets.QGroupBox):
         self.grid.toggled.connect(self._grid)
         n = len(self.checks)
         crow.addWidget(self.grid, n // 3, n % 3)
-        self.checks["star_psf"].setToolTip("off: stars drawn as small shaded spheres, without the PSF glow")
+        self.checks["star_psf"].setToolTip("off: stars drawn as dots, as in the instant proxy view, without the PSF glow")
         self.checks["auto_exposure"].setToolTip(
             "star exposure follows the brightest stars in view (smoothed over 1 s); the key exposure is added to it"
         )

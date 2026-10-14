@@ -108,7 +108,7 @@ def compose(sigma, state, look, sinks=None, star_layer=None, label=None):
 
     sigma: (ny, nx) column density [Msun/pc^2], top row first.
     sinks: dict with "core_pos" (and "core_racc") in code units if cores are drawn.
-    star_layer: float RGB from StarLight.render or None.
+    star_layer: from StarLight.render (RGB: screen blend, RGBA: drawn over) or None.
     """
     ny, nx = sigma.shape
     img = gas_rgb(sigma, state.clim, look["cmap"]) if look.get("show_gas", True) else np.zeros((ny, nx, 3), np.float32)
@@ -116,7 +116,9 @@ def compose(sigma, state, look, sinks=None, star_layer=None, label=None):
     if look.get("show_cores", True) and sinks is not None and len(sinks["core_pos"]):
         sx, sy, rad = core_discs(state, sinks["core_pos"], nx, ny, core_radius(look, sinks))
         draw_discs(img, sx, sy, rad, look.get("core_color", (1.0, 0.27, 0.0)))
-    if star_layer is not None:
+    if star_layer is not None and star_layer.shape[-1] == 4:  # dots, premultiplied RGBA: over the gas
+        img = img * (1 - star_layer[..., 3:]) + star_layer[..., :3]
+    elif star_layer is not None:  # PSF glow: screen blend
         img = screen_blend(img, star_layer)
     out = (np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8)
     if label:

@@ -5,7 +5,7 @@
 
 """
 Star layer of the frames, in true colour: photometry, point spread function, stretch,
-spheres, automatic exposure.
+dots (the editor proxy look), automatic exposure.
 
 Only numpy: used both by the render server (shamrock process) and by the editor.
 """
@@ -46,7 +46,7 @@ class StarLight:
     Image: each visible star is stamped with an analytic point spread function (Moffat
     core, wavelength dependent width, Moffat halo, optional diffraction spikes) at its
     exact sub-pixel position, its stamp only as large as the part of it that will be
-    visible. Or, without PSF, a small shaded sphere.
+    visible. Or, without PSF, a round dot exactly as in the editor proxy (see dots).
 
     Tone mapping: one asinh stretch of the intensity (Lupton et al. 2004) applied to the
     three channels together, so the colours are kept; highlights fade to white.
@@ -76,6 +76,13 @@ class StarLight:
     HALO_FRAC = 0.06
     SPIKE_FRAC = 0.02
     RADIUS = 80  # stamp radius at most
+
+    # dots (no PSF, and the editor proxy): radius DOT_R0 + DOT_R1 * brightness and opacity
+    # DOT_A0 + DOT_A1 * brightness, in pixels of a DOT_REF_WIDTH wide frame (the viewfinder
+    # at the editor's default size), drawn over the gas
+    DOT_REF_WIDTH = 840.0
+    DOT_R0, DOT_R1 = 0.7, 2.5
+    DOT_A0, DOT_A1 = 0.35, 0.65
 
     def __init__(self):
         self._lut_T = np.logspace(np.log10(1500.0), np.log10(60000.0), 400)
@@ -215,9 +222,12 @@ class StarLight:
     # -- image
 
     def render(self, state, pos, lum_rgb, sigma_los, nx, ny, look, pc_per_unit=1.0, exposure=None):
-        """Float RGB star layer in [0, 1] (screen-blended over the gas by compose)."""
+        """
+        Star layer for compose: with the PSF, float RGB in [0, 1] (screen-blended over the
+        gas); without, premultiplied RGBA dots (drawn over the gas).
+        """
         exposure = state.exposure if exposure is None else exposure
-        img = np.zeros((ny, nx, 3))
+        img = np.zeros((ny, nx, 3 if look.get("star_psf", True) else 4))
         if len(pos) == 0:
             return img
         sx, sy, z = project(state, pos, nx, ny)
@@ -230,7 +240,7 @@ class StarLight:
         if look.get("star_psf", True):
             lin = self._stamp(F, sx, sy, nx, ny, look, exposure)
             return self.stretch(lin, exposure)
-        return self._spheres(F, sx, sy, nx, ny, exposure)
+        return self._dots(F, sx, sy, nx, ny, exposure)
 
     def _stamp(self, F, sx, sy, nx, ny, look, exposure, over=4):
         K, env, R = self.kernels(nx, look.get("psf_scale", 1.0), look.get("star_spikes", True), over)
@@ -257,26 +267,37 @@ class StarLight:
             lin[ay0:ay1, ax0:ax1] += np.moveaxis(sub, 0, -1) * F[k]
         return lin[R : R + ny, R : R + nx]
 
-    def _spheres(self, F, sx, sy, nx, ny, exposure):
-        """Stars as small shaded spheres of their colour, size and brightness from their flux."""
-        img = np.zeros((ny, nx, 3))
-        s = nx / self.REF_WIDTH
-        # brightness of the star as a point: its PSF peak
+    def dots(self, F, exposure):
+        """
+        Dot look of stars with fluxes F (N, 3): brightness b in [0, 1] (asinh stretch of the
+        PSF peak, as the PSF render), display colour (N, 3), radius [px of a DOT_REF_WIDTH
+        frame], opacity. Shared by the render without PSF and the editor proxy.
+        """
         I = F.mean(axis=1) * self._moffat(0.0, self.CORE_FWHM, self.CORE_BETA) * 10.0**exposure
         b = np.clip(np.arcsinh(I / self.I_SOFT) / np.arcsinh(self.I_WHITE / self.I_SOFT), 0.0, 1.0)
-        col = F / np.maximum(F.max(axis=1, keepdims=True), 1e-300)
-        for k in np.flatnonzero(b > 0.5 / 255):
-            r = max(0.8, (1.2 + 4.5 * b[k]) * s)
-            x0, x1 = max(int(sx[k] - r - 1), 0), min(int(sx[k] + r + 2), nx)
-            y0, y1 = max(int(sy[k] - r - 1), 0), min(int(sy[k] + r + 2), ny)
+        col = np.clip(F / np.maximum(F.max(axis=1, keepdims=True), 1e-300), 0.0, 1.0) ** (1 / 2.2)
+        return b, col, self.DOT_R0 + self.DOT_R1 * b, self.DOT_A0 + self.DOT_A1 * b
+
+    def _dots(self, F, sx, sy, nx, ny, exposure, over=4):
+        """Premultiplied RGBA layer of anti-aliased dots, the faint ones first (as the proxy)."""
+        img = np.zeros((ny, nx, 4))
+        b, col, rad, alpha = self.dots(F, exposure)
+        rad = rad * nx / self.DOT_REF_WIDTH
+        sub = (np.arange(over) + 0.5) / over
+        for k in np.argsort(b, kind="stable"):
+            if b[k] <= 0.5 / 255:
+                continue
+            r = rad[k]
+            x0, x1 = max(int(np.floor(sx[k] - r)), 0), min(int(np.ceil(sx[k] + r)), nx)
+            y0, y1 = max(int(np.floor(sy[k] - r)), 0), min(int(np.ceil(sy[k] + r)), ny)
             if x0 >= x1 or y0 >= y1:
                 continue
-            yy, xx = np.mgrid[y0:y1, x0:x1]
-            d = np.hypot(xx + 0.5 - sx[k], yy + 0.5 - sy[k]) / r
-            mu = np.sqrt(np.clip(1 - d * d, 0, 1))
-            shade = (1 - 0.6 * (1 - mu)) * np.clip((1 - d) * r + 0.5, 0, 1)  # limb darkening, anti-aliased edge
-            v = (0.35 + 0.65 * b[k]) * shade[..., None] * col[k]
-            img[y0:y1, x0:x1] = np.maximum(img[y0:y1, x0:x1], v)
+            # pixel coverage of the disc, from over x over sub-samples per pixel
+            yy = (np.arange(y0, y1)[:, None] + sub[None, :]).ravel()
+            xx = (np.arange(x0, x1)[:, None] + sub[None, :]).ravel()
+            inside = (yy[:, None] - sy[k]) ** 2 + (xx[None, :] - sx[k]) ** 2 <= r * r
+            cov = inside.reshape(y1 - y0, over, x1 - x0, over).mean(axis=(1, 3))[..., None] * alpha[k]
+            img[y0:y1, x0:x1] = img[y0:y1, x0:x1] * (1 - cov) + np.append(col[k], 1.0) * cov
         return img
 
     # -- auto exposure

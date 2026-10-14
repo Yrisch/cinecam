@@ -54,6 +54,11 @@ def test_compose_draws_cores_stars_and_label():
     stars = np.zeros((100, 200, 3))
     stars[10, 10] = 1.0
     assert (compose(sigma, st, LOOK, sinks, stars, None)[10, 10] == 255).all()  # screen blend
+    dots = np.zeros((100, 200, 4))
+    dots[10, 10] = [0.5, 0.25, 0.0, 0.5]  # premultiplied RGBA: half opaque (1, 0.5, 0)
+    gas = lut("inferno")[127].astype(float)
+    expected = np.round((gas * 0.5 + [0.5, 0.25, 0.0]) * 255 + 1e-9)
+    np.testing.assert_allclose(compose(sigma, st, LOOK, sinks, dots, None)[10, 10], expected, atol=1)  # drawn over
     lab = compose(sigma, st, LOOK, None, None, "t = 1.00 Myr")
     changed = (lab != compose(sigma, st, LOOK, None, None, None)).any(axis=2)
     assert changed[60:, 100:].any() and not changed[:60].any()  # text bottom right

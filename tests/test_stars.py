@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: CECILL-2.1
 # cinecam is licensed under the CeCILL 2.1 License, see LICENSE for more information
 
-"""Star layer: true colour photometry, PSF, stretch, spheres, auto exposure (render/stars.py)."""
+"""Star layer: true colour photometry, PSF, stretch, dots, auto exposure (render/stars.py)."""
 
 import numpy as np
 import pytest
@@ -73,17 +73,41 @@ def test_spikes_along_the_frame_axes():
     assert K0[2, 2, 1][R, R + 30] < k[R, R + 30] / 10
 
 
-def test_render_psf_and_spheres():
+def test_render_psf():
     pos = np.array([[0.0, 0.0, 0.0]])
     lum, _ = SL.luminosities(np.array([5.0]))
     img = SL.render(view(), pos, lum, None, 384, 216, LOOK)
     assert img.shape == (216, 384, 3) and 0 <= img.min() and img.max() <= 1
     assert img[108, 192].max() > 0.5  # star in the centre
-    lit = (img.max(axis=2) > 0.01).sum()
-    sph = SL.render(view(), pos, lum, None, 384, 216, dict(LOOK, star_psf=False))
-    lit_sph = (sph.max(axis=2) > 0.01).sum()
-    assert 0 < lit_sph < lit  # a small sphere, no glow
     assert SL.render(view(), pos, lum, None, 384, 216, LOOK, exposure=-3).max() < img.max()
+
+
+def test_render_without_psf_draws_the_proxy_dots():
+    """No PSF: an RGBA dot of the colour, radius and opacity of the editor proxy (StarLight.dots)."""
+    pos = np.array([[0.0, 0.0, 0.0]])
+    lum, _ = SL.luminosities(np.array([5.0]))
+    nx, ny = 1680, 945  # twice the dot reference width
+    img = SL.render(view(), pos, lum, None, nx, ny, dict(LOOK, star_psf=False))
+    assert img.shape == (ny, nx, 4)
+    b, col, rad, alpha = SL.dots(SL.fluxes(view(), pos, lum, None, 1.0), 0.0)
+    cy, cx = ny // 2, nx // 2  # the star sits on a pixel corner: the 4 pixels around are inside the dot
+    np.testing.assert_allclose(img[cy, cx, 3], alpha[0])
+    np.testing.assert_allclose(img[cy, cx, :3], col[0] * alpha[0])  # premultiplied
+    covered = (img[..., 3] > 0).sum()
+    assert covered == pytest.approx(np.pi * (2 * rad[0]) ** 2, rel=0.2)  # radius x 2 at twice the width
+    psf = SL.render(view(), pos, lum, None, nx, ny, LOOK)
+    assert covered < (psf.max(axis=2) > 0.01).sum()  # no glow
+
+
+def test_dots_brightness_matches_the_psf_stretch():
+    """A dot is as bright as the peak pixel of the PSF render of the same star."""
+    lum, _ = SL.luminosities(np.array([0.3, 2.0, 20.0]))
+    F = SL.fluxes(view(), np.array([[0, 0, 0], [0, 0, 0], [0, 40, 0]]), lum, None, 1.0)
+    b, col, rad, alpha = SL.dots(F, -4.0)  # dark exposure: none saturated
+    assert b.max() < 1 and (np.diff(b) > 0).all() and (np.diff(rad) > 0).all() and (np.diff(alpha) > 0).all()
+    np.testing.assert_allclose(col.max(axis=1), 1.0)
+    grey_peak = np.repeat(F.mean(axis=1, keepdims=True), 3, axis=1) * SL._moffat(0.0, SL.CORE_FWHM, SL.CORE_BETA)
+    np.testing.assert_allclose(SL.stretch(grey_peak[:, None, :], -4.0)[:, 0, 0], b)
 
 
 def test_star_behind_the_camera_is_not_drawn():

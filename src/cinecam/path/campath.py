@@ -123,7 +123,7 @@ DEFAULT_LOOK = {
     "core_radius": None,  # code length units, None: physical size (sink accretion radius)
     "core_color": [1.0, 0.27, 0.0],
     "psf_scale": 1.0,  # size of the star PSF (1: core FWHM 1.6 px on a 1920 px frame, same look at any resolution)
-    "star_psf": True,  # False: stars as small shaded spheres
+    "star_psf": True,  # False: stars as dots, as in the editor proxy
     "star_spikes": True,  # diffraction spikes in the PSF
     "auto_exposure": False,  # star exposure follows the brightest stars in view (+ the key exposure)
     "time_label": True,
