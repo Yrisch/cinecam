@@ -143,3 +143,5 @@ CINECAM_TEST_DUMP=/path/to/dump ./cinecam test     # + shamrock tests (render pr
   are bounded by the visible stars).
 * Match the surrounding code: short helpers, no new dependencies without need.
 * When changing behaviour visible to users, update `README.md` in the same change.
+* Every source file starts with the license header (4 comment lines, `SPDX-License-Identifier:
+  CECILL-2.1`); copy it from any existing file into new ones.

@@ -1,3 +1,8 @@
+# cinecam: camera paths through SPH simulations, rendered with shamrock
+# Copyright (c) 2026 the cinecam authors
+# SPDX-License-Identifier: CECILL-2.1
+# cinecam is licensed under the CeCILL 2.1 License, see LICENSE for more information
+
 """
 Writer of small synthetic Phantom binary dumps for the tests: the layout read by
 cinecam.data.readers.PhantomReader (magic record, file id, 8 header tables, block

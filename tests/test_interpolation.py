@@ -1,3 +1,8 @@
+# cinecam: camera paths through SPH simulations, rendered with shamrock
+# Copyright (c) 2026 the cinecam authors
+# SPDX-License-Identifier: CECILL-2.1
+# cinecam is licensed under the CeCILL 2.1 License, see LICENSE for more information
+
 """
 The serial interpolation (see CLAUDE.md, invariants 1-2): keys are shot one after the
 other, so adding or editing a key must only change the path next to it.

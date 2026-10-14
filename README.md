@@ -209,3 +209,10 @@ interpolation (adding / editing a key only changes the path next to it, holds, e
 no overshoot), following sinks, the dump reader, sink tracks, the proxy sample and cache,
 the star photometry / PSF / stretch / auto exposure, compositing, and the editor
 (offscreen, with a stub of the render process). `pytest` is the only extra dependency.
+
+## License
+
+cinecam is licensed under the CeCILL Free Software License Agreement v2.1, like shamrock:
+see [LICENSE](LICENSE) (French version) or [LICENSE.en](LICENSE.en) (English version).
+
+SPDX-License-Identifier: CECILL-2.1
