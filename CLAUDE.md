@@ -29,7 +29,7 @@ The launcher puts `src/` and `$SHAMROCK_BUILD/pysham` (default `../../build`) on
 |---|---|---|
 | `constants.py` | units (cgs), `STAR_MAX_RACC_PC` (star / core threshold) | — |
 | `path/camera.py` | `CamState`, camera maths (`basis`, orbit/turntable/look/level, `_keep_hint`), `project`, `unproject_delta`, `frustum_corners` | numpy |
-| `path/campath.py` | `SerialHermite`, `Smoothstep`, `Keyframe`, `CameraPath` (keys → state at t, following), `make_orbit`, `DEFAULT_LOOK` | path |
+| `path/campath.py` | `SerialHermite`, `Smoothstep`, `Keyframe`, `CameraPath` (keys → state at t, following, `retime_segment`), `make_orbit`, `DEFAULT_LOOK` | path |
 | `data/readers.py` | fast partial dump readers: `DumpReader`, `PhantomReader`, `READERS`, `get_reader` | numpy |
 | `data/sinktracks.py` | `SinkTracks`: every sink in every dump, Hermite positions, `sinks_at(dump)`, npz cache in `~/.cache/cinecam/` | data, constants |
 | `data/proxycache.py` | `proxy_sample` (fixed-rank gas sample), `ProxyCache` (LRU + prefetch thread) | data, constants |
@@ -69,7 +69,11 @@ lazily), so they stay importable and testable without either.
    * editing key *k* only changes segments *k-1 … k+2*;
    * `CameraPath.evaluate` at a key time returns that key's state exactly (up as typed);
    * consecutive keys with the same position (or target, or up) hold perfectly still,
-     even when their dumps differ.
+     even when their dumps differ;
+   * retiming a segment (`CameraPath.retime_segment`, `Keyframe.stretch`) leaves every
+     other segment unchanged, only shifted in time, with the same velocities at its ends:
+     `SerialHermite` estimates velocities on the unstretched durations `h / stretch`, and
+     only clamps the ends of the stretched segment itself (no overshoot past ~3×).
    Never replace this with a global spline.
 2. **Position is relative to the target**: direction of `pos - target` + log distance,
    with monotone (Fritsch–Carlson) interpolation for scalars so nothing overshoots.

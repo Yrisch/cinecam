@@ -177,6 +177,64 @@ def test_orbit_has_an_even_angular_speed():
     np.testing.assert_allclose(radius, 10, rtol=1e-9)
 
 
+# ---------------------------------------------------------------------- retiming a segment
+
+
+def shot(fps=30):
+    """Spiral in while the dump advances, with fov and exposure changes: every value moves."""
+    start = CamState(pos=[0, -10, 3], target=[0, 0, 0], up=[0, 0, 1], dump=0)
+    keys = make_orbit(start, 0.0, 12.0, 180, n_keys=7, radius_factor=0.5, dump_end=6)
+    for i, k in enumerate(keys):
+        k.state.fov = 45 - 2 * i
+        k.state.exposure = 0.1 * i
+    return CameraPath(keyframes=keys, duration=13, fps=fps)
+
+
+def test_retiming_a_segment_keeps_the_motion_before_and_after():
+    p = shot()
+    ts = np.linspace(0, 13, 391)
+    ref = states(p, ts)
+    p.retime_segment(3, 5.0)  # keys 4-5: 2 s -> 5 s
+    assert [k.t for k in p.keyframes] == [0, 2, 4, 6, 11, 13, 15] and p.duration == 16
+    assert p.keyframes[3].stretch == pytest.approx(2.5)
+    before, after = ts <= 6, ts >= 8
+    np.testing.assert_array_equal(states(p, ts[before]), ref[before])
+    np.testing.assert_allclose(states(p, ts[after] + 3), ref[after], atol=1e-12)  # same motion, 3 s later
+    for t in (6.0, 11.0):  # same speed entering and leaving the stretched segment
+        f = lambda x: states(p, np.atleast_1d(x))[0, :3]  # noqa: E731
+        np.testing.assert_allclose(deriv(f, t, -1), deriv(f, t, +1), atol=1e-3)
+    assert p.evaluate(8.5).dump == pytest.approx(3.5)  # the simulation goes slower in the segment
+    p.retime_segment(3, 2.0)  # and back
+    assert p.keyframes[3].stretch == pytest.approx(1.0)
+    np.testing.assert_allclose(states(p, ts), ref, atol=1e-9)
+
+
+def test_shortening_a_segment_keeps_the_rest_too():
+    p = shot()
+    ts = np.linspace(0, 13, 391)
+    ref = states(p, ts)
+    p.retime_segment(1, 0.5)
+    assert p.duration == 11.5
+    np.testing.assert_array_equal(states(p, ts[ts <= 2]), ref[ts <= 2])
+    np.testing.assert_allclose(states(p, ts[ts >= 4] - 1.5), ref[ts >= 4], atol=1e-12)
+
+
+def test_a_much_stretched_segment_never_turns_back():
+    """Keeping the end speeds over a 10x longer segment would overshoot: the ends slow down instead."""
+    p = CameraPath(keyframes=[key(0, [0, -20, 0]), key(1, [0, -15, 0]), key(2, [0, -10, 0]), key(3, [0, -5, 0])])
+    p.retime_segment(1, 10.0)
+    d = np.array([p.evaluate(t).distance for t in np.linspace(0, 12, 601)])
+    assert (np.diff(d) <= 1e-12).all()
+
+
+def test_a_key_inside_a_stretched_segment_keeps_it_stretched():
+    p = shot()
+    p.retime_segment(3, 5.0)
+    i = p.set_key(8.0, p.evaluate(8.0))
+    assert [k.stretch for k in p.keyframes[2:6]] == pytest.approx([1, 2.5, 2.5, 1])
+    assert p.segment_at(8.0) == i and p.segment_at(7.9) == 3 and p.segment_at(16) is None
+
+
 def test_set_key_replaces_the_key_of_the_same_frame():
     p = CameraPath(fps=10)
     p.set_key(1.02, CamState(pos=[0, -1, 0], target=[0, 0, 0], up=[0, 0, 1]))
@@ -193,6 +251,9 @@ def test_save_load_roundtrip(tmp_path):
     p.save(f)
     q = CameraPath.load(f)
     assert q.to_dict() == p.to_dict()
+    p.retime_segment(0, 4.5)
+    p.save(f)
+    assert CameraPath.load(f).keyframes[0].stretch == 1.5
 
 
 def test_old_files_get_the_new_look_defaults_and_per_key_ease():
@@ -203,4 +264,5 @@ def test_old_files_get_the_new_look_defaults_and_per_key_ease():
     assert all(q.look[k] == v for k, v in DEFAULT_LOOK.items() if k != "cmap")
     assert "ease" not in q.look
     assert [k.state.ease for k in q.keyframes] == [True, False]  # the old global ease eased the first key
+    assert [k.stretch for k in q.keyframes] == [1, 1]
     assert q.format == "phantom"

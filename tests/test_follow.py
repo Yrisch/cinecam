@@ -71,3 +71,22 @@ def test_orbit_around_a_moving_sink(tracks):
     for k in keys:
         np.testing.assert_allclose(k.state.target, sink_pos(0, k.state.dump), atol=1e-9)
         assert np.linalg.norm(k.state.pos - k.state.target) == pytest.approx(2.0)
+
+
+def test_retiming_a_segment_while_following(tracks):
+    """The followed sink stays centred in the stretched segment; the rest only shifts in time."""
+    keys = [key(0, 0, [0, -3, 1], sink_pos(0, 0), follow=0), key(1, 1, [0.5, -3, 1], sink_pos(0, 1), follow=0),
+            key(2, 2, [1, -2.5, 1.5], sink_pos(0, 2), follow=0, ride=True),
+            key(3, 3, [1.5, -2, 1], sink_pos(0, 3), follow=0, ride=True), key(4, 4, [2, -2, 2], sink_pos(0, 4), follow=0)]  # fmt: skip
+    p = path_with(tracks, keys, duration=4.0)
+    ts = np.linspace(0, 4, 81)
+    ref = [p.evaluate(t) for t in ts]
+    p.retime_segment(1, 3.0)
+    for t, r in zip(ts, ref):
+        if t <= 1 or t >= 2:
+            st = p.evaluate(t if t <= 1 else t + 2)
+            np.testing.assert_allclose(st.pos, r.pos, atol=1e-9)
+            np.testing.assert_allclose(st.target, r.target, atol=1e-9)
+    for t in np.linspace(1, 4, 31):
+        st = p.evaluate(t)
+        np.testing.assert_allclose(st.target, sink_pos(0, st.dump), atol=1e-9)

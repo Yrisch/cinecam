@@ -240,6 +240,7 @@ class Editor(QtWidgets.QMainWindow):
         act(em, "Key camera at playhead", self.key_current, "K", True)
         act(em, "Delete key at playhead", lambda: self.delete_key(self.key_index()), "Del")
         act(em, "Insert orbit…", self.insert_orbit, None, True)
+        act(em, "Segment duration at playhead…", lambda: self.ask_segment_duration(self.path.segment_at(self.t)), "Ctrl+T")
         act(em, "Reset live camera to path", self.reset_live, "Esc")
         tb.addSeparator()
         act(rm, "Render preview now", self.request_refine, "Ctrl+R")
@@ -585,6 +586,28 @@ class Editor(QtWidgets.QMainWindow):
         self.path.remove_key(i)
         self.commit()
         self.path_edited()
+
+    def set_segment_duration(self, i, h):
+        """Retime the segment from key i to i+1, keeping the motion before and after it (keys after it shift)."""
+        self.path.retime_segment(i, h)
+        self.commit()
+        self.path_edited()
+        h = self.path.keyframes[i + 1].t - self.path.keyframes[i].t
+        self.statusBar().showMessage(f"keys {i + 1}–{i + 2}: {h:g} s, movie {self.path.duration:g} s", 5000)
+
+    def ask_segment_duration(self, i):
+        if i is None:
+            self.statusBar().showMessage("the playhead is not between two keyframes", 3000)
+            return
+        ks = self.path.keyframes
+        h, ok = QtWidgets.QInputDialog.getDouble(
+            self, "Segment duration",
+            f"Duration from key {i + 1} to key {i + 2} (s).\n"
+            "The keys after it move with it; the motion before and after is unchanged.",
+            ks[i + 1].t - ks[i].t, 1.0 / self.path.fps, 3600.0, 2,
+        )  # fmt: skip
+        if ok:
+            self.set_segment_duration(i, h)
 
     def auto_clim(self):
         if self.sample is None:

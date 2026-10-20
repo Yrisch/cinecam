@@ -200,3 +200,29 @@ def test_proxy_follows_the_dump(qapp, editor, sim):
     assert wait(qapp, lambda: editor.proxy_path == sim.dumps[3])
     img = editor.viewfinder.proxy_image()
     assert img is not None and img.width() > 0
+
+
+def test_retime_segment_from_the_editor_and_by_shift_dragging_a_key(qapp, editor):
+    for t, dolly in ((0.0, None), (1.0, 0.7), (2.0, 0.7)):
+        editor.set_time(t)
+        if dolly:
+            editor.live.dolly(dolly)
+        editor.key_current()
+    editor.set_time(0.5)
+    editor.set_segment_duration(editor.path.segment_at(editor.t), 3.0)
+    assert [k.t for k in editor.path.keyframes] == [0, 3, 4] and editor.path.duration == 12
+    editor.undo()
+    assert [k.t for k in editor.path.keyframes] == [0, 1, 2]
+
+    tl = editor.timeline
+    qapp.processEvents()
+    x1, x2 = tl.tx(1.0), tl.tx(3.0)  # shift-drag key 2 from 1 s to 3 s: key 3 follows
+    for kind, x, buttons in ((QtCore.QEvent.Type.MouseButtonPress, x1, Qt.MouseButton.LeftButton),
+                             (QtCore.QEvent.Type.MouseMove, x2, Qt.MouseButton.LeftButton),
+                             (QtCore.QEvent.Type.MouseButtonRelease, x2, Qt.MouseButton.NoButton)):  # fmt: skip
+        pt = QPointF(x, 40)
+        ev = QtGui.QMouseEvent(kind, pt, tl.mapToGlobal(pt), Qt.MouseButton.LeftButton, buttons, Qt.KeyboardModifier.ShiftModifier)
+        QtWidgets.QApplication.sendEvent(tl, ev)
+    assert [k.t for k in editor.path.keyframes] == pytest.approx([0, 3, 4])
+    assert editor.path.keyframes[0].stretch == pytest.approx(3.0)
+    assert editor.history[editor.hpos] == editor.path.to_dict()  # committed for undo

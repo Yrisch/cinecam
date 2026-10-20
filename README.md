@@ -56,7 +56,7 @@ to the Qt settings of the user.
 |---|---|
 | left, **world view** | simulation overview (particle splat, stars, cores), the path (coloured by time), every keyframe as a frustum with its number, the live camera in white. Drag the dots to move camera positions, the crosses to move targets (Ctrl: both). |
 | right, **viewfinder** | what the camera sees. Instant particle proxy while you move, then the real shamrock render (gas + stars + cores, same compositor as the movie) ~0.2 s after you stop. |
-| **timeline** | keyframes (drag to retime, right-click to delete), simulation dump track, playhead (click / drag to scrub). |
+| **timeline** | keyframes (drag to retime, Shift+drag to stretch the segment before a key, right-click to delete), simulation dump track, playhead (click / drag to scrub). Stretched segments are drawn in orange with their factor. |
 | **camera inspector** | exact numbers for the camera at the playhead + per-key look (Σ range, star exposure, extinction). |
 | **movie & look** | duration, fps, output resolution, preview resolution, colormap, layers, star PSF on/off (off: the proxy dots), spikes, auto exposure. |
 
@@ -65,13 +65,22 @@ When the playhead is on a keyframe, all edits change that keyframe.
 `Edit → Insert orbit…` generates a turn (or a spiral with *end distance* < 1, or a
 time-lapse with *end dump index*) starting from the current camera.
 
+**Stretching a segment** (`Edit → Segment duration at playhead…`, Ctrl+T, right-click on
+the timeline between two keys, or Shift+drag a key): changes the time between two keys
+without touching the rest of the movie. The keys after it move with it, everything before
+and after plays exactly as before (only later), and the camera enters and leaves the
+segment at the same speed; inside it, the camera takes the extra time in the middle, and
+the simulation dumps go by slower. Past about 3× the camera would have to turn back to
+keep its speed, so it slows down at the ends of the segment instead. Shortening works
+the same way.
+
 Viewfinder: LMB orbit · Shift+LMB/MMB pan · RMB/Ctrl+LMB look around · wheel dolly ·
 Ctrl+wheel fov · Alt+wheel dolly-zoom · WASD/RF fly · Q/E roll (Shift ×5).
 AZERTY keyboards: `View → Keyboard layout` or `--keyboard azerty` (remembered) gives
 ZQSD/RF fly · A/E roll, and &/"/è for the 1/3/7 world views.
 World view: click an end of the axis gizmo (bottom left) to look from that side (+X, -Y, ...),
 click it again for the opposite side; 1/3/7 front/side/top, F frame all.
-Global: K key · Del delete key · Space play · Shift+Space play until the next key · ←/→ frame · PgUp/PgDn keys · Esc reset the
+Global: K key · Del delete key · Ctrl+T segment duration · Space play · Shift+Space play until the next key · ←/→ frame · PgUp/PgDn keys · Esc reset the
 live camera to the path · Ctrl+Z/Ctrl+Shift+Z undo/redo · Ctrl+E export full-res frame.
 
 ## Instant views and the proxy cache
@@ -129,7 +138,7 @@ there in the renders, so a followed sink stays exactly where the camera expects 
   "look": {"cmap": "inferno", "show_stars": true, "show_cores": true, "core_radius": null, ...},
   "keyframes": [{"t": 0, "pos": [..], "target": [..], "up": [..], "fov": 45, "dump": 0,
                  "clim": [0.1, 3.5], "exposure": 0, "extinction": 1,
-                 "follow": null, "ride": false, "ease": false}, ...] }
+                 "follow": null, "ride": false, "ease": false, "stretch": 1}, ...] }
 ```
 
 Interpolation is built for shooting keys one after the other: the path is a chain of
@@ -148,6 +157,10 @@ dumps), and the distance / fov / Σ range / exposure turning back (they never ov
 
 Each key has an **ease** checkbox (camera panel): zero velocity at that key, the camera
 settles into it and starts again from rest (first and last keys of a shot, a pause).
+
+A key's `stretch` is the factor its segment (to the next key) was stretched by: the
+velocities are estimated as if the segment had kept its original duration, which is why
+a stretched segment changes nothing around it.
 
 The target and the direction of `pos - target` are interpolated this way, the camera
 distance through its log (orbits stay circular; *Insert orbit* puts a key every 15° for an

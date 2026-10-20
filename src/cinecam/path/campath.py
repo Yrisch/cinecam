@@ -32,21 +32,28 @@ class SerialHermite:
 
     ``monotone``: each component is treated alone and never overshoots its key values
     (for scalars like the distance, the fov, the colour range).
+
+    ``stretch`` (per key, factor of the segment that starts there): the velocities are
+    estimated as if each segment lasted ``h / stretch``, so stretching a segment (and
+    shifting the keys after it) keeps the velocity at its ends, and every other segment
+    is unchanged, only shifted in time. A segment stretched so much that it would have to
+    turn back to keep them gets slower end velocities (its own ends only).
     """
 
-    def __init__(self, ts, Y, ease, tol, monotone=False):
+    def __init__(self, ts, Y, ease, tol, monotone=False, stretch=None):
         self.ts = np.asarray(ts, dtype=float)
         Y = np.asarray(Y, dtype=float)
         self.Y = Y.reshape(len(self.ts), -1)
         self.h = np.diff(self.ts)
         if monotone and self.Y.shape[1] > 1:
-            cols = [SerialHermite(ts, self.Y[:, j], ease, tol, True) for j in range(self.Y.shape[1])]
+            cols = [SerialHermite(ts, self.Y[:, j], ease, tol, True, stretch) for j in range(self.Y.shape[1])]
             self.V0 = np.concatenate([c.V0 for c in cols], axis=1)
             self.V1 = np.concatenate([c.V1 for c in cols], axis=1)
             return
         n = len(self.ts)
         Y = self.Y
-        h = self.h
+        stretch = np.ones(n - 1) if stretch is None else np.asarray(stretch, dtype=float)[: n - 1]
+        h = self.h / stretch  # segment durations the velocities are estimated with
         C = np.diff(Y, axis=0) / h[:, None]  # chord velocities
         hold = np.linalg.norm(np.diff(Y, axis=0), axis=1) < tol
         V = np.zeros_like(Y)
@@ -79,6 +86,16 @@ class SerialHermite:
                     V[k, 0] = 3 * c
         self.V0 = V[:-1].copy()  # velocity at the start of each segment
         self.V1 = V[1:].copy()  # velocity at the end of each segment
+        # stretched segments: end velocities above 3x the real chord would overshoot and come back
+        Ca = np.diff(Y, axis=0) / self.h[:, None]
+        for i in np.flatnonzero(stretch > 1):
+            for V_ in (self.V0, self.V1):
+                if monotone:
+                    V_[i] = np.clip(V_[i], -3 * np.abs(Ca[i]), 3 * np.abs(Ca[i]))
+                else:
+                    nv, lim = np.linalg.norm(V_[i]), 3 * np.linalg.norm(Ca[i])
+                    if nv > lim:
+                        V_[i] *= lim / nv
 
     def segment(self, t):
         return np.clip(np.searchsorted(self.ts, t, side="right") - 1, 0, len(self.ts) - 2)
@@ -137,15 +154,16 @@ DEFAULT_LOOK = {
 class Keyframe:
     t: float
     state: CamState
+    stretch: float = 1.0  # time stretch of the segment to the next key (see CameraPath.retime_segment)
 
     def to_dict(self):
-        d = {"t": self.t}
+        d = {"t": self.t, "stretch": self.stretch}
         d.update(self.state.to_dict())
         return d
 
     @staticmethod
     def from_dict(d):
-        return Keyframe(float(d["t"]), CamState.from_dict(d))
+        return Keyframe(float(d["t"]), CamState.from_dict(d), float(d.get("stretch", 1.0)))
 
 
 @dataclass
@@ -209,7 +227,8 @@ class CameraPath:
         if i is not None:
             self.keyframes[i].state = state.copy()
         else:
-            self.keyframes.append(Keyframe(t, state.copy()))
+            before = [k for k in self.keyframes if k.t < t]  # a key splitting a stretched segment: both halves stay stretched
+            self.keyframes.append(Keyframe(t, state.copy(), before[-1].stretch if before else 1.0))
         self.sort()
         if t > self.duration:
             self.duration = t
@@ -217,6 +236,30 @@ class CameraPath:
 
     def remove_key(self, i):
         del self.keyframes[i]
+        self.invalidate()
+
+    def segment_at(self, t):
+        """Index of the key starting the segment at time t (the segment after a key at t), or None."""
+        ts = [k.t for k in self.keyframes]
+        i = int(np.searchsorted(ts, t + 0.5 / self.fps, side="right")) - 1
+        return i if 0 <= i < len(ts) - 1 else None
+
+    def retime_segment(self, i, h):
+        """
+        Give the segment from key i to key i+1 the duration h (s, snapped to frames).
+
+        The keys after it move by the difference and the movie gets longer (shorter); the
+        camera motion before and after the segment is unchanged, only shifted in time, and
+        the camera keeps its speed where it enters and leaves the segment (key stretch).
+        """
+        ks = self.keyframes
+        h0 = ks[i + 1].t - ks[i].t
+        h = max(self.snap(h), 1.0 / self.fps)
+        d = h - h0
+        ks[i].stretch *= h / h0
+        for k in ks[i + 1 :]:
+            k.t = self.snap(k.t + d)
+        self.duration = max(self.snap(self.duration + d), ks[-1].t)
         self.invalidate()
 
     @property
@@ -265,15 +308,16 @@ class CameraPath:
         # does not change the segments already shot. Segments that do not move are held
         # exactly (e.g. two keys at the same place on different dumps).
         ease = np.array([k.state.ease for k in ks])
+        st = np.array([k.stretch for k in ks])
         tol = 1e-4 * max(float(np.median(np.exp(logd))), 1e-30)
 
         def still(Y):
             return np.linalg.norm(np.diff(Y, axis=0), axis=1) < tol
 
-        fp = SerialHermite(ts, R, ease, tol)
-        fd = SerialHermite(ts, logd, ease, 1e-6, monotone=True)
-        fu = SerialHermite(ts, U, ease, 1e-3)
-        fs = SerialHermite(ts, S, ease, 1e-9, monotone=True)
+        fp = SerialHermite(ts, R, ease, tol, stretch=st)
+        fd = SerialHermite(ts, logd, ease, 1e-6, monotone=True, stretch=st)
+        fu = SerialHermite(ts, U, ease, 1e-3, stretch=st)
+        fs = SerialHermite(ts, S, ease, 1e-9, monotone=True, stretch=st)
 
         frames = [None]
         for k in ks:
@@ -284,7 +328,7 @@ class CameraPath:
         for f in frames:
             A = np.zeros((n, 3)) if f is None else self.tracks.track(f, D)
             Tl, Pl = Tw - A, Pw - A
-            per_frame.append((SerialHermite(ts, Tl, ease, tol), Pl, still(Pl)))
+            per_frame.append((SerialHermite(ts, Tl, ease, tol, stretch=st), Pl, still(Pl)))
         if len(frames) > 1:
             fidx = {f: i for i, f in enumerate(frames)}
             nf = len(frames)

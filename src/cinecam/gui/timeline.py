@@ -20,12 +20,16 @@ class Timeline(QtWidgets.QWidget):
         self.setMinimumHeight(70)
         self.setMaximumHeight(80)
         self._drag = None
+        self._span = None  # time scale frozen while a ripple drag changes the duration
+
+    def span(self):
+        return self._span or self.ed.path.duration
 
     def tx(self, t):
-        return self.M + t / max(self.ed.path.duration, 1e-9) * (self.width() - 2 * self.M)
+        return self.M + t / max(self.span(), 1e-9) * (self.width() - 2 * self.M)
 
     def xt(self, x):
-        return (x - self.M) / max(self.width() - 2 * self.M, 1) * self.ed.path.duration
+        return (x - self.M) / max(self.width() - 2 * self.M, 1) * self.span()
 
     def paintEvent(self, ev):
         ed = self.ed
@@ -82,6 +86,15 @@ class Timeline(QtWidgets.QWidget):
             p.drawText(QPointF(x + 2, 15), f"{t:g}s")
             t += step
 
+        # stretched segments: the time between the keys was changed with their ends' speed kept
+        for a, b in zip(ks, ks[1:]):
+            if abs(a.stretch - 1) > 1e-6:
+                xa, xb = self.tx(a.t), self.tx(b.t)
+                p.setPen(QPen(QColor(230, 160, 80), 2))
+                p.drawLine(QPointF(xa + 7, 40), QPointF(xb - 7, 40))
+                if xb - xa > 40:
+                    p.drawText(QRectF(xa, 41, xb - xa, 12), Qt.AlignmentFlag.AlignHCenter, f"×{a.stretch:.2g}")
+
         # keyframes
         on = ed.key_index()
         for i, k in enumerate(ks):
@@ -112,13 +125,24 @@ class Timeline(QtWidgets.QWidget):
     def mousePressEvent(self, ev):
         x, y = ev.position().x(), ev.position().y()
         i = self._key_near(x, y)
-        if ev.button() == Qt.MouseButton.RightButton and i is not None:
+        if ev.button() == Qt.MouseButton.RightButton:
             menu = QtWidgets.QMenu(self)
-            act = menu.addAction(f"Delete keyframe {i + 1}")
-            if menu.exec(ev.globalPosition().toPoint()) == act:
-                self.ed.delete_key(i)
+            acts = {}
+            if i is not None:
+                acts[menu.addAction(f"Delete keyframe {i + 1}")] = lambda: self.ed.delete_key(i)
+            s = self.ed.path.segment_at(self.xt(x)) if i is None else None
+            if s is not None:
+                acts[menu.addAction(f"Duration from key {s + 1} to key {s + 2}…")] = lambda: self.ed.ask_segment_duration(s)
+            if acts:
+                fn = acts.get(menu.exec(ev.globalPosition().toPoint()))
+                if fn is not None:
+                    fn()
             return
-        if i is not None:
+        if i is not None and i > 0 and ev.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            self._drag = ("ripple", i)  # stretch the segment before key i, the keys after it follow
+            self._span = self.ed.path.duration
+            self.ed.set_time(self.ed.path.keyframes[i].t)
+        elif i is not None:
             self._drag = ("key", self.ed.path.keyframes[i])
             self.ed.set_time(self.ed.path.keyframes[i].t)
         else:
@@ -130,6 +154,14 @@ class Timeline(QtWidgets.QWidget):
             return
         x = ev.position().x()
         ed = self.ed
+        if self._drag[0] == "ripple":
+            i = self._drag[1]
+            ks = ed.path.keyframes
+            t = ed.path.snap(max(self.xt(x), ks[i - 1].t))
+            if abs(t - ks[i].t) > 0.5 / ed.path.fps:
+                ed.path.retime_segment(i - 1, t - ks[i - 1].t)
+                ed.set_time(ks[i].t)
+            return
         t = float(np.clip(ed.path.snap(self.xt(x)), 0, ed.path.duration))
         if self._drag[0] == "key":
             k = self._drag[1]
@@ -141,6 +173,8 @@ class Timeline(QtWidgets.QWidget):
             ed.set_time(t)
 
     def mouseReleaseEvent(self, ev):
-        if self._drag and self._drag[0] == "key":
+        if self._drag and self._drag[0] in ("key", "ripple"):
             self.ed.commit()
         self._drag = None
+        self._span = None
+        self.update()
