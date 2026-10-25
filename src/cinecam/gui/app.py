@@ -792,8 +792,9 @@ class Editor(QtWidgets.QMainWindow):
         self.commit()
         self.set_time(0)
 
-    def open_path(self):
-        fname, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open camera path", "", "Camera path (*.json)")
+    def open_path(self, fname=None):
+        if not fname:
+            fname, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open camera path", "", "Camera path (*.json)")
         if not fname:
             return
         self.path = CameraPath.load(fname)
@@ -823,8 +824,17 @@ class Editor(QtWidgets.QMainWindow):
         return self.save_path()
 
     def add_dumps(self):
-        files, _ = QtWidgets.QFileDialog.getOpenFileNames(self, "Select Phantom dumps (in time order)", os.getcwd())
+        files, _ = QtWidgets.QFileDialog.getOpenFileNames(
+            self, "Select Phantom dumps (in time order), or a camera path (.json)", os.getcwd()
+        )
         if not files:
+            return
+        paths = [f for f in files if f.lower().endswith(".json")]
+        if paths:  # a camera path picked here (e.g. in the dialog shown at startup): open it, it lists its dumps
+            if len(files) > 1:
+                QtWidgets.QMessageBox.warning(self, "cinecam", "Select either simulation dumps or one camera path (.json).")
+                return
+            self.open_path(paths[0])
             return
         self.path.dumps = sorted(os.path.abspath(f) for f in files)
         self.ensure_tracks()

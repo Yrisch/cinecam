@@ -235,3 +235,23 @@ def test_render_dialog_stereo_option(qapp):
     assert not dlg.angle.isEnabled() and dlg.mp4.isEnabled()
     dlg.stereo.setChecked(True)
     assert dlg.angle.isEnabled() and not dlg.mp4.isEnabled() and dlg.angle.value() == 4.0
+
+
+def test_a_camera_path_picked_in_the_dumps_dialog_is_opened(qapp, editor, sim, tmp_path, monkeypatch):
+    """The dialog shown at startup without dumps: picking a path file opens it, not as a dump."""
+    from cinecam.path.camera import CamState
+    from cinecam.path.campath import CameraPath, Keyframe
+
+    p = CameraPath(keyframes=[Keyframe(0, CamState(pos=[0, -3, 1], target=[0, 0, 0], up=[0, 0, 1], dump=2))], dumps=sim.dumps[:3])
+    f = str(tmp_path / "p.json")
+    p.save(f)
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getOpenFileNames", staticmethod(lambda *a, **k: ([f], "")))
+    editor.add_dumps()
+    assert editor.path_file == f and editor.path.dumps == sim.dumps[:3] and len(editor.path.keyframes) == 1
+    assert wait(qapp, lambda: editor.backend.requests[-1]["dump"] == sim.dumps[2], 5)  # rendered from its dumps
+
+    warned = []
+    monkeypatch.setattr(QtWidgets.QMessageBox, "warning", staticmethod(lambda *a, **k: warned.append(a)))
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getOpenFileNames", staticmethod(lambda *a, **k: ([f, sim.dumps[0]], "")))
+    editor.add_dumps()
+    assert warned and editor.path.dumps == sim.dumps[:3]  # mixed selection: nothing changes

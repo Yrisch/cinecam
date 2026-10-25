@@ -61,6 +61,9 @@ to the Qt settings of the user.
 | **camera inspector** | exact numbers for the camera at the playhead + per-key look (Σ range, star exposure, extinction). |
 | **movie & look** | duration, fps, output resolution, preview resolution, colormap, layers, star PSF on/off (off: the proxy dots), spikes, auto exposure. |
 
+Started without dumps (`./cinecam`), the editor asks for them: select the dumps, or a
+camera path `.json`, which is opened with the dumps it lists.
+
 Workflow: scrub to a time, fly the camera in the viewfinder, press **K**.
 When the playhead is on a keyframe, all edits change that keyframe.
 `Edit → Insert orbit…` generates a turn (or a spiral with *end distance* < 1, or a
