@@ -8,7 +8,7 @@ import math
 import numpy as np
 import pytest
 
-from cinecam.path.camera import CamState, frustum_corners, pixel_size, project, unproject_delta
+from cinecam.path.camera import CamState, frustum_corners, pixel_size, project, stereo_eyes, unproject_delta
 
 Z = np.array([0.0, 0.0, 1.0])
 
@@ -128,3 +128,49 @@ def test_dict_roundtrip():
     assert again.same_view(st)
     assert CamState.from_dict(dict(st.to_dict(), unknown_key=1)).same_view(st)  # forward compatible
     assert cam(ride=True).ride is False  # riding needs a sink to follow
+
+
+# ---------------------------------------------------------------------- stereo
+
+
+def test_lens_shift_translates_the_image():
+    st = cam(fov=40.0)
+    pts = np.random.default_rng(3).normal(size=(20, 3))
+    sx, sy, z = project(st, pts, 192, 108)
+    st.shift = 2 * 7 / 192  # 7 px
+    sx2, sy2, _ = project(st, pts, 192, 108)
+    np.testing.assert_allclose(sx2, sx - 7)
+    np.testing.assert_array_equal(sy2, sy)
+    assert "shift" not in st.to_dict()  # render only, never in a path file
+
+
+def test_stereo_eyes_are_parallel_with_the_target_at_the_centre():
+    nx, ny = 1920, 1080
+    st = cam(pos=[3.0, -10.0, 4.0], target=[1.0, 0.5, -0.5], up=[0.2, 0.1, 1.0], fov=45.0)
+    left, right = stereo_eyes(st, 4.0, nx, ny)
+    d, r, u = st.basis()
+    for e in (left, right):
+        de, re, ue = e.basis()
+        np.testing.assert_allclose([de, re, ue], [d, r, u], atol=1e-12)  # parallel, no toe-in
+        assert (e.shift * nx / 2) == pytest.approx(round(e.shift * nx / 2))  # whole pixels (gas crop)
+        sx, sy, _ = project(e, [st.target], nx, ny)
+        assert abs(sx[0] - nx / 2) <= 0.5 and sy[0] == pytest.approx(ny / 2)  # zero parallax on the target
+    np.testing.assert_allclose(right.pos - left.pos, 2 * st.distance * math.tan(math.radians(2.0)) * r)
+    a, b = left.pos - st.target, right.pos - st.target
+    ang = math.degrees(math.atan2(np.linalg.norm(np.cross(a, b)), a @ b))
+    assert ang == pytest.approx(4.0, abs=0.01)  # 4 degrees apart seen from the target
+    assert left.shift > 0 > right.shift and left.shift == -right.shift
+    assert right.pos @ r > left.pos @ r
+
+
+def test_stereo_parallax_behind_and_in_front_of_the_screen():
+    nx, ny = 960, 540
+    st = cam()
+    left, right = stereo_eyes(st, 4.0, nx, ny)
+    d = st.basis()[0]
+    pts = np.array([st.target + 5 * d, st.target - 4 * d, st.target + [2.0, 0.0, 1.5]])
+    lx, ly, _ = project(left, pts, nx, ny)
+    rx, ry, _ = project(right, pts, nx, ny)
+    np.testing.assert_allclose(ly, ry, atol=1e-9)  # no vertical disparity anywhere
+    assert rx[0] - lx[0] > 1  # behind the target: right eye image to the right, behind the screen
+    assert rx[1] - lx[1] < -1  # in front: crossed, out of the screen

@@ -5,6 +5,7 @@
 ./cinecam ../esc_00* --path orbit.json      # open / create a path file
 ./cinecam render orbit.json --scale 0.5     # batch render (draft at half res)
 ./cinecam render orbit.json --frames 0:150 --sycl 0:0 --mp4 movie.mp4
+./cinecam render orbit.json --stereo        # flat-screen stereo pair (even files left eye, odd right)
 ```
 
 Working on the code (or letting an AI agent do it)? Read [`CLAUDE.md`](CLAUDE.md) first:
@@ -195,6 +196,31 @@ camera stays level; only a roll (Q/E) changes it.
     exposure is added to it.
 * cores (other sinks): orange discs of their physical size, the accretion radius stored in the
   dump (4000 au here). `core_radius` (code length units, 0 / `null` = physical) overrides it.
+
+### Stereo (flat screen)
+
+`./cinecam render path.json --stereo [angle]`, or the *stereo pair* box of the render
+dialog, renders each frame of the path twice: path frame *i* becomes file `2i` (left eye)
+and `2i+1` (right eye), at the same size as a mono frame. `--frames` still counts path
+frames; `--skip-existing` skips the eyes already on disk; `--mp4` is not available in
+stereo. Nothing changes in the path file: any mono path can be rendered in stereo.
+
+The two eyes are derived from the path's camera at render time:
+
+* seen from the camera target they are `angle` degrees apart (default 4°, ±2° per eye),
+  side by side along the camera's right vector, so the eye separation scales with the
+  distance to the target and the depth effect stays the same through a dolly;
+* they look **parallel** to the mono camera (no toe-in, which would add vertical
+  offsets between the eyes towards the corners), and each image is shifted sideways
+  (an off-axis view, rendered a few % wider and cropped) so that the **target is at the
+  centre of both images**: it sits on the screen plane, what is behind it appears behind
+  the screen, what is in front comes out;
+* the star exposure (auto exposure included) is the mono camera's, the same for both eyes,
+  and the time label is at the same place in both.
+
+On a large screen keep the angle moderate: gas far behind the target is up to about
+`angle / horizontal fov` of the image width apart between the eyes. VR stereo
+(fixed eye separation, headset projection) is a different mode, not done yet.
 
 ## Layout
 

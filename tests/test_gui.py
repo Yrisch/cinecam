@@ -226,3 +226,12 @@ def test_retime_segment_from_the_editor_and_by_shift_dragging_a_key(qapp, editor
     assert [k.t for k in editor.path.keyframes] == pytest.approx([0, 3, 4])
     assert editor.path.keyframes[0].stretch == pytest.approx(3.0)
     assert editor.history[editor.hpos] == editor.path.to_dict()  # committed for undo
+
+
+def test_render_dialog_stereo_option(qapp):
+    from cinecam.gui.inspectors import RenderDialog
+
+    dlg = RenderDialog(None, "/tmp/out", 10)
+    assert not dlg.angle.isEnabled() and dlg.mp4.isEnabled()
+    dlg.stereo.setChecked(True)
+    assert dlg.angle.isEnabled() and not dlg.mp4.isEnabled() and dlg.angle.value() == 4.0

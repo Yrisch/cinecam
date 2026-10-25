@@ -88,3 +88,32 @@ def test_render_process_roundtrip():
     finally:
         if proc.is_alive():
             proc.terminate()
+
+
+def test_lens_shift_of_the_gas_render_matches_project(scene):
+    """A stereo eye's gas render (wider, cropped) is the image translated like project() moves points."""
+    from cinecam.path.camera import CamState
+
+    st = CamState(pos=[0, -30, 8], target=[0, 0, 0], up=[0, 0, 1])
+    a = scene.column(st, 160, 90)
+    st.shift = 2 * 6 / 160  # 6 px: what was at column j + 6 is now at column j
+    b = scene.column(st, 160, 90)
+    np.testing.assert_allclose(b[:, :-6], a[:, 6:], rtol=1e-6, atol=1e-12 * a.max())
+
+
+def test_stereo_movie_render(tmp_path):
+    import subprocess
+    import sys
+
+    from cinecam.path.camera import CamState
+    from cinecam.path.campath import CameraPath, Keyframe
+
+    p = CameraPath(keyframes=[Keyframe(0, CamState(pos=[0, -30, 8], target=[0, 0, 0], up=[0, 0, 1])),
+                              Keyframe(1, CamState(pos=[5, -30, 8], target=[0, 0, 0], up=[0, 0, 1]))],
+                   duration=1, fps=2, dumps=[DUMP])  # fmt: skip
+    f = tmp_path / "p.json"
+    p.save(f)
+    out = tmp_path / "frames"
+    cmd = [sys.executable, "-m", "cinecam.render_movie", str(f), "--out", str(out), "--scale", "0.05", "--frames", "1:3", "--stereo"]
+    subprocess.run(cmd, check=True, capture_output=True, env=dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path)))
+    assert sorted(os.listdir(out)) == [f"frame_{j:05d}.png" for j in (2, 3, 4, 5)]

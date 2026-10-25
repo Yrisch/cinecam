@@ -890,7 +890,9 @@ class Editor(QtWidgets.QMainWindow):
             "--sycl",
             self.args.sycl,
         ]
-        if dlg.mp4.isChecked():
+        if dlg.stereo.isChecked():
+            cmd += ["--stereo", str(dlg.angle.value())]
+        elif dlg.mp4.isChecked():
             cmd += ["--mp4", os.path.join(dlg.out.text(), "movie.mp4")]
         if dlg.skip.isChecked():
             cmd += ["--skip-existing"]

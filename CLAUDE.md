@@ -28,7 +28,7 @@ The launcher puts `src/` and `$SHAMROCK_BUILD/pysham` (default `../../build`) on
 | module | role | may import |
 |---|---|---|
 | `constants.py` | units (cgs), `STAR_MAX_RACC_PC` (star / core threshold) | — |
-| `path/camera.py` | `CamState`, camera maths (`basis`, orbit/turntable/look/level, `_keep_hint`), `project`, `unproject_delta`, `frustum_corners` | numpy |
+| `path/camera.py` | `CamState`, camera maths (`basis`, orbit/turntable/look/level, `_keep_hint`), `project`, `unproject_delta`, `frustum_corners`, `stereo_eyes` | numpy |
 | `path/campath.py` | `SerialHermite`, `Smoothstep`, `Keyframe`, `CameraPath` (keys → state at t, following, `retime_segment`), `make_orbit`, `DEFAULT_LOOK` | path |
 | `data/readers.py` | fast partial dump readers: `DumpReader`, `PhantomReader`, `READERS`, `get_reader` | numpy |
 | `data/sinktracks.py` | `SinkTracks`: every sink in every dump, Hermite positions, `sinks_at(dump)`, npz cache in `~/.cache/cinecam/` | data, constants |
@@ -99,6 +99,13 @@ lazily), so they stay importable and testable without either.
    the dot look there only.
 10. **Auto exposure is a function of path time only** (`stars.star_exposure`, ±0.5 s
    window, clamped ±3 dex), so frames can be rendered in any order or in parallel.
+11. **Stereo eyes are parallel with a lens shift**, never toed in: `stereo_eyes` moves the
+   mono camera along its right vector (eyes `angle` apart seen from the target) and sets
+   `CamState.shift` (horizontal lens shift in half image widths, a whole number of pixels,
+   never saved) so the target is centred in both eyes. Everything that maps world to
+   pixels goes through `project`, which applies the shift; the gas render
+   (`SimScene.column`) renders a centred camera `2|shift|` px wider and crops. A new
+   projection elsewhere must honour `shift` too. Both eyes use the mono star exposure.
 
 ## Extending
 

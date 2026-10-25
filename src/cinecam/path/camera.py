@@ -49,6 +49,7 @@ class CamState:
     follow: int = None  # sink index the camera looks at (None: world)
     ride: bool = False  # with follow: the camera also moves with the sink
     ease: bool = False  # keyframe: the camera comes to rest at this key
+    shift: float = 0.0  # horizontal lens shift, in half image widths (stereo eyes only, see stereo_eyes; not saved)
 
     def __post_init__(self):
         self.pos = np.asarray(self.pos, dtype=float)
@@ -235,9 +236,38 @@ def project(state, pts, nx, ny):
     aspect = nx / ny
     with np.errstate(divide="ignore", invalid="ignore"):
         zz = np.where(z > ZNEAR, z, np.nan)
-        sx = (x / (zz * th * aspect) + 1.0) * 0.5 * nx
+        sx = (x / (zz * th * aspect) - state.shift + 1.0) * 0.5 * nx
         sy = (1.0 - y / (zz * th)) * 0.5 * ny
     return sx, sy, z
+
+
+def stereo_eyes(state, angle_deg, nx, ny):
+    """
+    Left and right eye cameras of a flat-screen stereo pair around the mono camera.
+
+    The eyes are seen angle_deg apart from the target (±angle/2), on the line through the
+    mono camera along its right vector, at baseline 2 D tan(angle/2) for a target at
+    distance D. They look parallel to the mono camera (no toe-in, so no vertical
+    disparity) and their images are shifted (``shift``, an off-axis frustum) so that the
+    target is at the centre of both: zero parallax on the target, which sits on the
+    screen plane; what is behind it appears behind the screen. The shift is a whole
+    number of pixels so that the gas render can be a wider image cropped exactly
+    (SimScene.column). Returns (left, right).
+    """
+    d, r, u = state.basis()
+    D = state.distance
+    b = D * math.tan(math.radians(angle_deg) / 2)
+    th = math.tan(math.radians(state.fov) / 2)
+    px = round(math.tan(math.radians(angle_deg) / 2) / (th * nx / ny) * nx / 2)  # target offset in a parallel eye
+    eyes = []
+    for side in (-1, 1):
+        e = state.copy()
+        e.pos = state.pos + side * b * r
+        e.target = state.target + side * b * r
+        e.up = u
+        e.shift = -side * 2.0 * px / nx
+        eyes.append(e)
+    return tuple(eyes)
 
 
 def pixel_size(state, z, ny):

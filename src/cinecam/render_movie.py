@@ -10,6 +10,10 @@ Render all the frames of a cinecam camera path with shamrock.
 
 Frames are written as frame_%05d.png. Use --frames to split a long movie between
 several jobs / GPUs (--sycl), and --skip-existing to resume an interrupted render.
+
+--stereo [angle]: flat-screen stereo pair (eyes seen angle degrees apart from the target,
+default 4): frame i of the path is written as frame 2i (left eye) and 2i+1 (right eye).
+--frames still counts path frames.
 """
 
 import argparse
@@ -19,6 +23,7 @@ import sys
 import time
 
 from .data.sinktracks import SinkTracks
+from .path.camera import stereo_eyes
 from .path.campath import CameraPath
 from .render.backend import FrameRenderer, SimScene, init_shamrock
 from .render.compose import save_png
@@ -36,7 +41,11 @@ def main():
     ap.add_argument("--crf", type=int, default=18, help="x264 quality for --mp4 (lower is better)")
     ap.add_argument("--skip-existing", action="store_true")
     ap.add_argument("--format", default=None, help="dump format of the fast sink reader (default: the path's)")
+    ap.add_argument("--stereo", type=float, nargs="?", const=4.0, default=None, metavar="ANGLE",
+                    help="stereo pair, eyes ANGLE degrees apart seen from the target (default 4): even files left, odd right")  # fmt: skip
     args = ap.parse_args()
+    if args.stereo is not None and args.mp4:
+        sys.exit("ERROR: --mp4 is not available with --stereo (the files alternate left / right eyes)")
 
     path = CameraPath.load(args.path)
     if not path.keyframes:
@@ -65,21 +74,29 @@ def main():
     path.set_tracks(tracks)
     renderer.tracks = tracks
     print(f"sink tracks: {tracks.nsink} sinks in {tracks.ndump} dumps ({time.perf_counter() - t0:.1f} s)", flush=True)
-    print(f"rendering frames {a}..{b - 1} of {n} at {nx}x{ny} into {out}", flush=True)
+    stereo = "" if args.stereo is None else f", stereo {args.stereo:g}° (files {2 * a}..{2 * b - 1}, even left, odd right)"
+    print(f"rendering frames {a}..{b - 1} of {n} at {nx}x{ny} into {out}{stereo}", flush=True)
 
     t_start = time.perf_counter()
     for k, i in enumerate(frames):
-        fname = os.path.join(out, f"frame_{i:05d}.png")
-        if args.skip_existing and os.path.exists(fname):
+        if args.stereo is None:
+            fnames = [os.path.join(out, f"frame_{i:05d}.png")]
+        else:
+            fnames = [os.path.join(out, f"frame_{j:05d}.png") for j in (2 * i, 2 * i + 1)]
+        if args.skip_existing and all(os.path.exists(f) for f in fnames):
             continue
         t0 = time.perf_counter()
         st = path.evaluate(path.frame_time(i))
         if scene.load(path.dump_path(st)):
             print(f"loaded {scene.path} (t = {scene.time_myr:.3f} Myr, {scene.load_time:.1f} s)", flush=True)
         timings = {}
-        exposure = star_exposure(path, path.frame_time(i), renderer.starlight, nx, ny)
-        img = renderer.render(st, nx, ny, path.look, timings, exposure)
-        save_png(img, fname)
+        exposure = star_exposure(path, path.frame_time(i), renderer.starlight, nx, ny)  # of the mono camera: same for both eyes
+        cams = [st] if args.stereo is None else stereo_eyes(st, args.stereo, nx, ny)
+        for cam, fname in zip(cams, fnames):
+            if args.skip_existing and os.path.exists(fname):
+                continue
+            img = renderer.render(cam, nx, ny, path.look, timings, exposure)
+            save_png(img, fname)
         dt = time.perf_counter() - t0
         el = time.perf_counter() - t_start
         eta = el / (k + 1) * (len(frames) - k - 1)

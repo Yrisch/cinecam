@@ -130,18 +130,21 @@ class SimScene:
     def column(self, state, nx, ny):
         """Column density [Msun/pc^2] seen by the camera, (ny, nx), top row first."""
         d, r, u = state.basis()
+        # a lens shift (stereo eye) of a whole number of pixels: a centred camera wide enough, cropped
+        sh = int(round(state.shift * nx / 2))
         cam = self.sham.math.Camera3d_f64_3(
             pos=tuple(state.pos),
             dir=tuple(d),
             up=tuple(u),
-            nx=int(nx),
+            nx=int(nx + 2 * abs(sh)),
             ny=int(ny),
             fovy=math.radians(state.fov),
             znear=ZNEAR,
             zfar=1e30,
         )
         arr = np.asarray(self.model.render_column_integ("rho", "f64", cam.get_rays()))
-        return arr.reshape(ny, nx)[::-1] * self.sigma_unit
+        x0 = abs(sh) + sh
+        return arr.reshape(ny, nx + 2 * abs(sh))[::-1, x0 : x0 + nx] * self.sigma_unit
 
     def column_to_points(self, origin, pts):
         """Gas column [Msun/pc^2] between origin and each point (two half-line integrals)."""
