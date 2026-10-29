@@ -187,8 +187,8 @@ camera stays level; only a roll (Q/E) changes it.
     `extinction` multiplier per key);
   * analytic PSF stamped at each star's sub-pixel position: Moffat core (FWHM 1.6 px on a
     1920 px frame, ×`psf_scale`, wider in red), Moffat halo, optional diffraction spikes
-    (`star_spikes`); each stamp only as large as the visible part of that star's PSF;
-    sizes scale with the frame width, so a draft and the final movie look the same;
+    (`star_spikes`, turned by `spike_angle` degrees counterclockwise on screen); each stamp
+    only as large as the visible part of that star's PSF; sizes scale with the frame width, so a draft and the final movie look the same;
   * colour preserving asinh stretch of the intensity (Lupton et al. 2004), highlights fade
     to white; `exposure` (dex, per key) shifts it;
   * `star_psf` off: stars as round dots, exactly as in the instant proxy view (same brightness,

@@ -227,6 +227,9 @@ class MovieInspector(QtWidgets.QGroupBox):
         self.core_r.setSpecialValueText("physical (r_acc)")  # 0 = sink accretion radius
         self.core_r.setToolTip("core disc radius in code length units; 0 = the sinks' accretion radius from the dump")
         self.psf = dspin(0.05, 20, 2, 0.1)
+        self.spike = dspin(-90, 90, 1, 5, "°")
+        self.spike.setWrapping(True)
+        self.spike.setToolTip("rotation of the diffraction spikes, counterclockwise on screen (0: along the frame edges)")
         self.checks = {}
         crow = QtWidgets.QGridLayout()
         for i, (key, text) in enumerate(
@@ -245,7 +248,7 @@ class MovieInspector(QtWidgets.QGroupBox):
         self.checks["auto_exposure"].setToolTip(
             "star exposure follows the brightest stars in view (smoothed over 1 s); the key exposure is added to it"
         )
-        for w in (self.duration, self.fps, self.core_r, self.psf):
+        for w in (self.duration, self.fps, self.core_r, self.psf, self.spike):
             w.valueChanged.connect(self._edited)
         for w in (self.res, self.prev, self.cmap):
             w.currentIndexChanged.connect(self._edited)
@@ -256,6 +259,7 @@ class MovieInspector(QtWidgets.QGroupBox):
         lay.addRow("colormap", self.cmap)
         lay.addRow("core radius", self.core_r)
         lay.addRow("star PSF scale", self.psf)
+        lay.addRow("spike angle", self.spike)
         lay.addRow(crow)
         self._updating = False
 
@@ -283,8 +287,10 @@ class MovieInspector(QtWidgets.QGroupBox):
         self.cmap.setCurrentText(path.look["cmap"])
         self.core_r.setValue(path.look["core_radius"] or 0.0)
         self.psf.setValue(path.look["psf_scale"])
+        self.spike.setValue(path.look["spike_angle"])
         for k, c in self.checks.items():
             c.setChecked(bool(path.look[k]))
+        self.spike.setEnabled(path.look["star_psf"] and path.look["star_spikes"])
         self._updating = False
 
     def _edited(self):
@@ -299,6 +305,7 @@ class MovieInspector(QtWidgets.QGroupBox):
         path.look["cmap"] = self.cmap.currentText()
         path.look["core_radius"] = self.core_r.value() or None
         path.look["psf_scale"] = self.psf.value()
+        path.look["spike_angle"] = self.spike.value()
         for k, c in self.checks.items():
             path.look[k] = c.isChecked()
         path.invalidate()

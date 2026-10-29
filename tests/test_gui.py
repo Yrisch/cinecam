@@ -185,6 +185,10 @@ def test_movie_panel_edits_the_look(editor):
     assert editor.path.look["star_psf"] is False and editor.path.look["auto_exposure"] is True
     editor.request_refine()
     assert editor.backend.requests[-1]["look"]["star_psf"] is False
+    assert not editor.movie_insp.spike.isEnabled()  # spikes are part of the PSF
+    editor.movie_insp.checks["star_psf"].setChecked(True)
+    editor.movie_insp.spike.setValue(22.5)
+    assert editor.path.look["spike_angle"] == 22.5
 
 
 def test_up_buttons_set_up_exactly(editor):

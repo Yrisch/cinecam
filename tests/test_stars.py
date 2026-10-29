@@ -73,6 +73,17 @@ def test_spikes_along_the_frame_axes():
     assert K0[2, 2, 1][R, R + 30] < k[R, R + 30] / 10
 
 
+def test_spike_angle_turns_the_spikes_counterclockwise():
+    K, _, R = SL.kernels(1920, 1.0, True, angle=30.0)
+    k = K[2, 2, 1]
+    a = np.radians(30.0)
+    on = k[R - round(30 * np.sin(a)), R + round(30 * np.cos(a))]  # 30 px up-right at 30 degrees (rows go down)
+    assert on > 10 * k[R, R + 30]  # no longer along the frame axis
+    assert on > 10 * k[R + round(30 * np.sin(a)), R + round(30 * np.cos(a))]  # not clockwise
+    np.testing.assert_array_equal(SL.kernels(1920, 1.0, True, angle=90.0)[0], SL.kernels(1920, 1.0, True)[0])
+    np.testing.assert_array_equal(SL.kernels(1920, 1.0, False, angle=30.0)[0], SL.kernels(1920, 1.0, False)[0])
+
+
 def test_render_psf():
     pos = np.array([[0.0, 0.0, 0.0]])
     lum, _ = SL.luminosities(np.array([5.0]))

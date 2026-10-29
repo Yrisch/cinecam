@@ -168,31 +168,39 @@ class StarLight:
         a2 = (fwhm / (2 * np.sqrt(2 ** (1 / beta) - 1))) ** 2
         return (beta - 1) / (np.pi * a2) * (1 + r2 / a2) ** -beta
 
-    def _psf(self, x, y, s, lam, spikes):
-        """Analytic PSF (sum 1 over the plane) at offsets x, y [pixels], size factor s, wavelength lam [nm]."""
+    def _psf(self, x, y, s, lam, spikes, angle=0.0):
+        """
+        Analytic PSF (sum 1 over the plane) at offsets x, y [pixels, y down], size factor s,
+        wavelength lam [nm]; spikes turned by angle [degrees, counterclockwise on screen].
+        """
         w = s * lam / 550.0
         r2 = x * x + y * y
         core = self._moffat(r2, self.CORE_FWHM * w, self.CORE_BETA)
         halo = self._moffat(r2, self.HALO_FWHM * w, self.HALO_BETA)
         psf = (1 - self.HALO_FRAC - self.SPIKE_FRAC * spikes) * core + self.HALO_FRAC * halo
         if spikes:
-            # 4 spikes along the frame axes: thin across, ~1/r^2 along, their length grows with wavelength
+            # 4 spikes (along the frame axes at angle 0): thin across, ~1/r^2 along, their
+            # length grows with wavelength
             sw = 0.6 * self.CORE_FWHM * w
             L = 6.0 * w
+            a = np.radians(angle)
+            u = x * np.cos(a) - y * np.sin(a)  # along the first spike pair (y is down)
+            v = x * np.sin(a) + y * np.cos(a)
             spk = 0.0
-            for along, across in ((x, y), (y, x)):
+            for along, across in ((u, v), (v, u)):
                 spk = spk + np.exp(-0.5 * (across / sw) ** 2) / (np.sqrt(2 * np.pi) * sw) / (1 + (along / L) ** 2) / (2 * np.pi * L)
             psf = psf + self.SPIKE_FRAC * spk
         return psf
 
-    def kernels(self, nx, psf_scale, spikes, over=4):
+    def kernels(self, nx, psf_scale, spikes, over=4, angle=0.0):
         """
         PSF stamps per sub-pixel phase: (over, over, 3, n, n) with n = 2R+1, each channel
         integrated over the pixels (4x4 sub-samples), plus the radial envelope used to size
-        the stamps. Cached per resolution and look.
+        the stamps. Cached per resolution and look. angle: spike angle [degrees].
         """
         s = nx / self.REF_WIDTH * psf_scale
-        key = (round(s, 4), bool(spikes), over)
+        angle = round(float(angle) % 90.0, 3) if spikes else 0.0  # 4 spikes: a quarter turn looks the same
+        key = (round(s, 4), bool(spikes), over, angle)
         if key in self._kernels:
             return self._kernels[key]
         R = int(min(max(8, round(self.RADIUS * s)), 400))
@@ -209,11 +217,12 @@ class StarLight:
                         Y = (ii + sy - fy)[:, None]
                         X = (ii + sx - fx)[None, :]
                         for c in range(3):
-                            acc[c] += self._psf(X, Y, s, self.LAMBDA_RGB[c], spikes)
+                            acc[c] += self._psf(X, Y, s, self.LAMBDA_RGB[c], spikes, angle)
                 K[py, px] = acc / 16.0
         # smooth radial taper to zero at the stamp edge (no visible square cut on bright stars)
         rr = np.hypot(*np.meshgrid(ii, ii))
-        K *= (np.clip(1 - (rr / (R + 0.5)) ** 2, 0, 1) ** 2).astype(np.float32)        # resolution independent brightness: the same image at any width (sizes scale with it)
+        K *= (np.clip(1 - (rr / (R + 0.5)) ** 2, 0, 1) ** 2).astype(np.float32)
+        # resolution independent brightness: the same image at any width (sizes scale with it)
         K *= (nx / self.REF_WIDTH) ** 2
         env = np.array([K[:, :, :, rr >= r].max() if (rr >= r).any() else 0.0 for r in range(R + 1)])
         self._kernels[key] = (K, env, R)
@@ -243,7 +252,9 @@ class StarLight:
         return self._dots(F, sx, sy, nx, ny, exposure)
 
     def _stamp(self, F, sx, sy, nx, ny, look, exposure, over=4):
-        K, env, R = self.kernels(nx, look.get("psf_scale", 1.0), look.get("star_spikes", True), over)
+        K, env, R = self.kernels(
+            nx, look.get("psf_scale", 1.0), look.get("star_spikes", True), over, look.get("spike_angle", 0.0)
+        )
         thr = self.visible_intensity(exposure)
         I = F.mean(axis=1)
         # stamp radius: as far as this star's PSF stays visible
