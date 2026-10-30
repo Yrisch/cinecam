@@ -189,6 +189,12 @@ def test_movie_panel_edits_the_look(editor):
     editor.movie_insp.checks["star_psf"].setChecked(True)
     editor.movie_insp.spike.setValue(22.5)
     assert editor.path.look["spike_angle"] == 22.5
+    editor.movie_insp.glow.setValue(0.4)
+    assert editor.path.look["glow_gamma"] == 0.4
+    editor.movie_insp.label.setValue(60)
+    assert editor.path.look["label_size"] == 60
+    editor.movie_insp.checks["time_label"].setChecked(False)
+    assert not editor.movie_insp.label.isEnabled()
 
 
 def test_up_buttons_set_up_exactly(editor):

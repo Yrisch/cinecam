@@ -59,7 +59,7 @@ to the Qt settings of the user.
 | right, **viewfinder** | what the camera sees. Instant particle proxy while you move, then the real shamrock render (gas + stars + cores, same compositor as the movie) ~0.2 s after you stop. |
 | **timeline** | keyframes (drag to retime, Shift+drag to stretch the segment before a key, right-click to delete), simulation dump track, playhead (click / drag to scrub). Stretched segments are drawn in orange with their factor. |
 | **camera inspector** | exact numbers for the camera at the playhead + per-key look (Σ range, star exposure, extinction). |
-| **movie & look** | duration, fps, output resolution, preview resolution, colormap, layers, star PSF on/off (off: the proxy dots), spikes, auto exposure. |
+| **movie & look** | duration, fps, output resolution, preview resolution, colormap, layers, star PSF on/off (off: the proxy dots), spikes, bright star glow, auto exposure, time label size. |
 
 Started without dumps (`./cinecam`), the editor asks for them: select the dumps, or a
 camera path `.json`, which is opened with the dumps it lists.
@@ -191,14 +191,53 @@ camera stays level; only a roll (Q/E) changes it.
     only as large as the visible part of that star's PSF; sizes scale with the frame width, so a draft and the final movie look the same;
   * colour preserving asinh stretch of the intensity (Lupton et al. 2004), highlights fade
     to white; `exposure` (dex, per key) shifts it;
+  * `glow_gamma` (*bright star glow γ* in the Movie panel, default 1): tames the stars
+    brighter than white. With the physical flux (γ = 1) a star seen 100 times closer is
+    10⁴ times brighter: its centre is white anyway, so only its halo and spikes grow, up
+    to a large white disc. With γ < 1 a star whose peak pixel would be *x* times white
+    is drawn *x*^γ times white instead (colour kept): its glow still grows on approach,
+    but slowly (0.5: 100 times over white, 0.3: 16 times, for a star 10⁴ times over).
+    Stars below white are unchanged, and the limit follows the exposure, so it works
+    with auto exposure;
   * `star_psf` off: stars as round dots, exactly as in the instant proxy view (same brightness,
     colour, size and opacity, drawn over the gas; sizes relative to the frame width, so the
     proxy, the preview and the movie match);
-  * `auto_exposure`: the exposure follows the brightest stars in view (10th brightest just
-    below white), averaged over ±0.5 s of the path and clamped to ±3 dex; the key
-    exposure is added to it.
+  * `auto_exposure`: the exposure follows the brightest stars in view (see
+    [Star exposure](#star-exposure)); the key exposure is added to it.
 * cores (other sinks): orange discs of their physical size, the accretion radius stored in the
   dump (4000 au here). `core_radius` (code length units, 0 / `null` = physical) overrides it.
+* time label (`time_label`): simulation time in the bottom right corner, `label_size` px
+  high on a 1080 px tall frame (default 36), scaled with the output height.
+
+### Star exposure
+
+The star brightness on screen is set by an exposure in dex (a factor 10 per unit): the
+star fluxes are multiplied by 10^exposure before the asinh stretch, which is linear for
+faint pixels, logarithmic for bright ones and white at `I_WHITE` (`render/stars.py`).
+
+* **Manual** (default): the `exposure` of the keys, interpolated along the path like the
+  other per-key values.
+* **Auto** (`auto_exposure`): an automatic exposure is added to the key one, so the key
+  exposure becomes a correction (+1: ten times brighter than automatic). At time *t*:
+  1. for 11 times spread over [*t* − 0.5 s, *t* + 0.5 s] of the path (clipped to the movie),
+     take the camera of that time and the stars of its dump;
+  2. keep the stars whose centre is in the frame, in front of the camera;
+  3. compute the peak pixel intensity of each one (flux at its distance × the PSF core
+     peak, grey average of R, G, B);
+  4. choose the exposure that puts the **10th brightest** at half the white intensity,
+     just below white after the stretch (with fewer than 10 stars in view, the faintest
+     one). So a few very bright stars saturate and the bulk of the field stays visible;
+  5. average those exposures with Gaussian weights (σ = a quarter of the window), skipping
+     times with no star in view, and clamp to ±3 dex (0 when there is no star at all).
+
+  The result depends on the path time only, so frames can be rendered in any order or in
+  parallel and give the same exposure (and both stereo eyes share it). The averaging
+  smooths the changes over about a second, like an eye adapting, not instantly.
+
+  Limits of this first version: the gas extinction is ignored when choosing the exposure
+  (a star hidden in a dense core still counts as bright), `psf_scale` is not taken into
+  account, stars just outside the frame do not count even if their glow does, and when
+  the stars leave the view the automatic part jumps back to 0 (smoothed over the window).
 
 ### Stereo (flat screen)
 

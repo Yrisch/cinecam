@@ -142,9 +142,11 @@ DEFAULT_LOOK = {
     "psf_scale": 1.0,  # size of the star PSF (1: core FWHM 1.6 px on a 1920 px frame, same look at any resolution)
     "star_psf": True,  # False: stars as dots, as in the editor proxy
     "star_spikes": True,  # diffraction spikes in the PSF
-    "spike_angle": 0.0,  # degrees, counterclockwise on screen (0: along the frame axes)
+    "spike_angle": 0.0,
+    "glow_gamma": 1.0,  # stars brighter than white: peak/white x drawn as x**glow_gamma (1: physical)  # degrees, counterclockwise on screen (0: along the frame axes)
     "auto_exposure": False,  # star exposure follows the brightest stars in view (+ the key exposure)
     "time_label": True,
+    "label_size": 36.0,  # time label height in px on a 1080 px tall frame (scaled with the frame height)
 }
 
 

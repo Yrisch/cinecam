@@ -122,7 +122,8 @@ lazily), so they stay importable and testable without either.
   it in `CameraPath._build` / `_world`, expose it in `CameraInspector`. Use monotone
   mode for scalars that must not overshoot.
 * **Star look**: tuning constants are at the top of `StarLight` in `render/stars.py`
-  (`I_SOFT`, `I_WHITE`, `CORE_FWHM`, `HALO_*`, `SPIKE_FRAC`, `RADIUS`, extinction ratios).
+  (`I_SOFT`, `I_WHITE`, `CORE_FWHM`, `HALO_*`, `SPIKE_FRAC`, `RADIUS`, extinction ratios). The look options `spike_angle`
+  and `glow_gamma` (`StarLight.limit_glow`, stars brighter than white) act on top of them.
 * **Keyboard**: shortcuts go through `KEYMAPS` / `key_char` in `gui/keymaps.py` (QWERTY
   and AZERTY); never hard-code a letter.
 

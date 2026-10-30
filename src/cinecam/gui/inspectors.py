@@ -230,6 +230,13 @@ class MovieInspector(QtWidgets.QGroupBox):
         self.spike = dspin(-90, 90, 1, 5, "°")
         self.spike.setWrapping(True)
         self.spike.setToolTip("rotation of the diffraction spikes, counterclockwise on screen (0: along the frame edges)")
+        self.glow = dspin(0.0, 1.0, 2, 0.05)
+        self.glow.setToolTip(
+            "glow of the stars brighter than white: 1 = physical flux (a close star's halo and spikes grow as 1/d^2), "
+            "lower = they grow slower (brightness above white x drawn as x^value); stars below white are unchanged"
+        )
+        self.label = dspin(4, 400, 0, 2, " px")
+        self.label.setToolTip("time label height in pixels of a 1080 px tall frame (scaled with the output height)")
         self.checks = {}
         crow = QtWidgets.QGridLayout()
         for i, (key, text) in enumerate(
@@ -248,7 +255,7 @@ class MovieInspector(QtWidgets.QGroupBox):
         self.checks["auto_exposure"].setToolTip(
             "star exposure follows the brightest stars in view (smoothed over 1 s); the key exposure is added to it"
         )
-        for w in (self.duration, self.fps, self.core_r, self.psf, self.spike):
+        for w in (self.duration, self.fps, self.core_r, self.psf, self.spike, self.glow, self.label):
             w.valueChanged.connect(self._edited)
         for w in (self.res, self.prev, self.cmap):
             w.currentIndexChanged.connect(self._edited)
@@ -260,6 +267,8 @@ class MovieInspector(QtWidgets.QGroupBox):
         lay.addRow("core radius", self.core_r)
         lay.addRow("star PSF scale", self.psf)
         lay.addRow("spike angle", self.spike)
+        lay.addRow("bright star glow γ", self.glow)
+        lay.addRow("time label size", self.label)
         lay.addRow(crow)
         self._updating = False
 
@@ -288,9 +297,13 @@ class MovieInspector(QtWidgets.QGroupBox):
         self.core_r.setValue(path.look["core_radius"] or 0.0)
         self.psf.setValue(path.look["psf_scale"])
         self.spike.setValue(path.look["spike_angle"])
+        self.label.setValue(path.look["label_size"])
+        self.glow.setValue(path.look["glow_gamma"])
         for k, c in self.checks.items():
             c.setChecked(bool(path.look[k]))
         self.spike.setEnabled(path.look["star_psf"] and path.look["star_spikes"])
+        self.label.setEnabled(path.look["time_label"])
+        self.glow.setEnabled(path.look["star_psf"])
         self._updating = False
 
     def _edited(self):
@@ -306,6 +319,8 @@ class MovieInspector(QtWidgets.QGroupBox):
         path.look["core_radius"] = self.core_r.value() or None
         path.look["psf_scale"] = self.psf.value()
         path.look["spike_angle"] = self.spike.value()
+        path.look["label_size"] = self.label.value()
+        path.look["glow_gamma"] = self.glow.value()
         for k, c in self.checks.items():
             path.look[k] = c.isChecked()
         path.invalidate()

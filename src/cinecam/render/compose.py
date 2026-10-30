@@ -17,6 +17,8 @@ from scipy.ndimage import gaussian_filter
 
 from ..path.camera import ZNEAR, pixel_size, project
 
+LABEL_REF_HEIGHT = 1080  # label_size is in pixels of a 1080 px tall frame (same look at any resolution)
+
 _LUTS = {}
 
 
@@ -122,21 +124,25 @@ def compose(sigma, state, look, sinks=None, star_layer=None, label=None):
         img = screen_blend(img, star_layer)
     out = (np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8)
     if label:
-        out = draw_label(out, label)
+        out = draw_label(out, label, look.get("label_size", 36.0))
     return out
 
 
-def draw_label(img, text):
+def draw_label(img, text, label_size=36.0):
+    """White text in the bottom right corner, label_size px high on a LABEL_REF_HEIGHT frame."""
     from PIL import Image, ImageDraw, ImageFont
 
     ny, nx, _ = img.shape
     im = Image.fromarray(img)
     dr = ImageDraw.Draw(im)
-    size = max(4, ny // 30)
+    size = max(4, round(label_size * ny / LABEL_REF_HEIGHT))
     try:
         font = ImageFont.truetype("DejaVuSans.ttf", size)
     except OSError:
-        font = ImageFont.load_default()
+        try:
+            font = ImageFont.load_default(size)  # Pillow's embedded scalable font (Pillow >= 10.1, FreeType)
+        except (TypeError, ImportError, OSError):
+            font = ImageFont.load_default()  # fixed bitmap font, last resort
     w = dr.textlength(text, font=font)
     dr.text((nx - w - size, ny - 2 * size), text, fill=(255, 255, 255), font=font)
     return np.asarray(im)

@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from cinecam.path.camera import CamState, pixel_size
-from cinecam.render.compose import compose, core_radius, gas_rgb, lut, splat_column
+from cinecam.render.compose import compose, core_radius, draw_label, gas_rgb, lut, splat_column
 
 LOOK = {"cmap": "inferno", "show_gas": True, "show_cores": True, "core_radius": None, "core_color": [1.0, 0.27, 0.0]}
 
@@ -59,9 +59,23 @@ def test_compose_draws_cores_stars_and_label():
     gas = lut("inferno")[127].astype(float)
     expected = np.round((gas * 0.5 + [0.5, 0.25, 0.0]) * 255 + 1e-9)
     np.testing.assert_allclose(compose(sigma, st, LOOK, sinks, dots, None)[10, 10], expected, atol=1)  # drawn over
-    lab = compose(sigma, st, LOOK, None, None, "t = 1.00 Myr")
+    lab = compose(sigma, st, dict(LOOK, label_size=200), None, None, "t = 1.00 Myr")  # 18 px on this 100 px frame
     changed = (lab != compose(sigma, st, LOOK, None, None, None)).any(axis=2)
     assert changed[60:, 100:].any() and not changed[:60].any()  # text bottom right
     assert lab[changed].max() > 240  # in white
     dark = compose(sigma, st, dict(LOOK, show_gas=False, show_cores=False), sinks, None, None)
     assert dark.max() == 0
+
+
+def test_label_size_is_a_parameter_scaled_with_the_frame_height():
+    """label_size px on a 1080 px tall frame: twice the size -> twice as tall, same look in a draft."""
+
+    def text_height(ny, size):
+        img = draw_label(np.zeros((ny, 2 * ny, 3), np.uint8), "t = 1.00 Myr", size)
+        rows = np.flatnonzero(img.max(axis=(1, 2)) > 128)
+        return rows[-1] - rows[0] + 1
+
+    h = text_height(1080, 36)
+    assert h > 20  # a scalable font, not the 11 px bitmap fallback
+    assert text_height(1080, 72) == pytest.approx(2 * h, rel=0.1)
+    assert text_height(540, 36) == pytest.approx(h / 2, rel=0.1)

@@ -93,6 +93,22 @@ def test_render_psf():
     assert SL.render(view(), pos, lum, None, 384, 216, LOOK, exposure=-3).max() < img.max()
 
 
+def test_glow_gamma_tones_down_only_the_stars_brighter_than_white():
+    lum, _ = SL.luminosities(np.array([5.0, 5.0]))
+    F = SL.fluxes(view(), np.array([[0, 0, 0], [0, 0, 0]]), lum, None, 1.0)
+    peak = SL._moffat(0.0, SL.CORE_FWHM, SL.CORE_BETA)
+    e = np.log10(SL.I_WHITE / (F[0].mean() * peak))  # first star exactly white
+    F[1] *= 1e4  # second one 1e4 times over white (100 times closer)
+    out = SL.limit_glow(F, e, 0.5)
+    np.testing.assert_allclose(out[0], F[0])  # at white: untouched
+    np.testing.assert_allclose(out[1], F[1] / 100)  # x**0.5: 100 times over white, same colour
+    np.testing.assert_array_equal(SL.limit_glow(F, e, 1.0), F)
+    near = CamState(pos=[0, -0.01, 0], target=[0, 0, 0], up=[0, 0, 1])
+    wide = (SL.render(near, np.zeros((1, 3)), lum[:1], None, 384, 216, LOOK).max(axis=2) > 0.1).sum()
+    tamed = (SL.render(near, np.zeros((1, 3)), lum[:1], None, 384, 216, dict(LOOK, glow_gamma=0.3)).max(axis=2) > 0.1)
+    assert tamed.sum() < wide / 2 and tamed[108, 192]  # smaller glow (the gamma 1 one is cut by the stamp radius), still a white star
+
+
 def test_render_without_psf_draws_the_proxy_dots():
     """No PSF: an RGBA dot of the colour, radius and opacity of the editor proxy (StarLight.dots)."""
     pos = np.array([[0.0, 0.0, 0.0]])

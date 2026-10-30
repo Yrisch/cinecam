@@ -247,9 +247,24 @@ class StarLight:
         F = self.fluxes(state, pos[ok], lum_rgb[ok], None if sigma_los is None else sigma_los[ok], pc_per_unit)
         sx, sy = sx[ok], sy[ok]
         if look.get("star_psf", True):
+            F = self.limit_glow(F, exposure, look.get("glow_gamma", 1.0))
             lin = self._stamp(F, sx, sy, nx, ny, look, exposure)
             return self.stretch(lin, exposure)
         return self._dots(F, sx, sy, nx, ny, exposure)
+
+    def limit_glow(self, F, exposure, gamma):
+        """
+        Fluxes F (N, 3) with the stars brighter than white toned down: x = peak pixel / white
+        (at the reference resolution, after exposure) becomes x**gamma above 1, colours kept.
+        Stars below white are untouched; gamma = 1 is the physical flux. Without it a close
+        star (flux ~ 1/d^2) is white anyway and only its halo and spikes keep growing.
+        """
+        if gamma >= 1.0 or len(F) == 0:
+            return F
+        x = F.mean(axis=1) * self._moffat(0.0, self.CORE_FWHM, self.CORE_BETA) * 10.0**exposure / self.I_WHITE
+        with np.errstate(divide="ignore"):
+            f = np.where(x > 1.0, np.maximum(x, 1.0) ** (gamma - 1.0), 1.0)
+        return F * f[:, None]
 
     def _stamp(self, F, sx, sy, nx, ny, look, exposure, over=4):
         K, env, R = self.kernels(
